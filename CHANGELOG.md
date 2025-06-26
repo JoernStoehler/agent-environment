@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Additional VS Code extensions for enhanced development experience:
+  - google.geminicodeassist - Gemini AI code assistant
+  - github.vscode-github-actions - GitHub Actions workflow support
+  - tamasfe.even-better-toml - TOML language support
+  - ms-azuretools.vscode-containers - Container management
+  - tomoki1207.pdf - PDF viewer
+  - charliermarsh.ruff - Python linter and formatter
+
+## [0.1.0] - 2024-01-XX
+
+### Added
 - Initial devcontainer setup based on mcr.microsoft.com/devcontainers/universal:2
 - Docker Compose configuration with OTLP collector for telemetry
 - Extended Dockerfile with additional tools:
