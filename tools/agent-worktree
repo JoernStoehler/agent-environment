@@ -104,7 +104,7 @@ check_uncommitted_changes() {
 check_remote_sync() {
     git fetch --quiet origin
     
-    local current_branch=$(git rev-parse --abbrev-ref HEAD)
+    local current_branch=$(get_current_branch)
     local upstream="origin/$current_branch"
     
     # Check if upstream exists
@@ -133,6 +133,37 @@ check_remote_sync() {
 # Get workspace root directory
 get_workspace_root() {
     dirname "$(git rev-parse --show-toplevel)"
+}
+
+# Get current branch name
+get_current_branch() {
+    git rev-parse --abbrev-ref HEAD 2>/dev/null
+}
+
+# Get branches that have worktrees
+get_worktree_branches() {
+    git worktree list --porcelain | grep "^branch" | cut -d' ' -f2 | sed 's|refs/heads/||' | grep -v "^$"
+}
+
+# Get all branches (local and remote)
+get_all_branches() {
+    git branch -a | sed 's/^[* ]*//' | sed 's|remotes/origin/||' | grep -v "HEAD" | sort -u
+}
+
+# Get branches available for new worktrees (excludes current branch and existing worktrees)
+get_available_branches_for_worktree() {
+    local current_branch=$(get_current_branch)
+    local worktree_branches=$(get_worktree_branches)
+    local all_branches=$(get_all_branches)
+    
+    local available_branches=""
+    for branch in $all_branches; do
+        if [[ "$branch" != "$current_branch" ]] && ! echo "$worktree_branches" | grep -q "^$branch$"; then
+            available_branches="$available_branches $branch"
+        fi
+    done
+    
+    echo "$available_branches"
 }
 
 # Validate branch name
@@ -414,18 +445,7 @@ _agent_worktree_complete() {
             # After 'add' command - suggest branch names based on existing branches
             # but filter out current branch and branches that already have worktrees
             if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
-                local current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-                local worktree_branches=$(git worktree list --porcelain | grep "^branch" | cut -d' ' -f2 | sed 's|refs/heads/||')
-                local all_branches=$(git branch -a | sed 's/^[* ]*//' | sed 's|remotes/origin/||' | grep -v "HEAD" | sort -u)
-                
-                # Filter out current branch and branches with existing worktrees
-                local available_branches=""
-                for branch in $all_branches; do
-                    if [[ "$branch" != "$current_branch" ]] && ! echo "$worktree_branches" | grep -q "^$branch$"; then
-                        available_branches="$available_branches $branch"
-                    fi
-                done
-                
+                local available_branches=$(get_available_branches_for_worktree)
                 COMPREPLY=( $(compgen -W "${available_branches}" -- ${cur}) )
             fi
             return 0
@@ -433,7 +453,7 @@ _agent_worktree_complete() {
         remove)
             # After 'remove' command - suggest branches that have worktrees
             if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
-                local worktree_branches=$(git worktree list --porcelain | grep "^branch" | cut -d' ' -f2 | sed 's|refs/heads/||' | grep -v "^$")
+                local worktree_branches=$(get_worktree_branches)
                 COMPREPLY=( $(compgen -W "${worktree_branches}" -- ${cur}) )
             fi
             return 0
@@ -479,24 +499,14 @@ _agent_worktree_complete() {
                         add)
                             # Suggest branches for add
                             if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
-                                local current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-                                local worktree_branches=$(git worktree list --porcelain | grep "^branch" | cut -d' ' -f2 | sed 's|refs/heads/||')
-                                local all_branches=$(git branch -a | sed 's/^[* ]*//' | sed 's|remotes/origin/||' | grep -v "HEAD" | sort -u)
-                                
-                                local available_branches=""
-                                for branch in $all_branches; do
-                                    if [[ "$branch" != "$current_branch" ]] && ! echo "$worktree_branches" | grep -q "^$branch$"; then
-                                        available_branches="$available_branches $branch"
-                                    fi
-                                done
-                                
+                                local available_branches=$(get_available_branches_for_worktree)
                                 COMPREPLY=( $(compgen -W "${available_branches}" -- ${cur}) )
                             fi
                             ;;
                         remove)
                             # Suggest branches for remove
                             if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
-                                local worktree_branches=$(git worktree list --porcelain | grep "^branch" | cut -d' ' -f2 | sed 's|refs/heads/||' | grep -v "^$")
+                                local worktree_branches=$(get_worktree_branches)
                                 COMPREPLY=( $(compgen -W "${worktree_branches}" -- ${cur}) )
                             fi
                             ;;
