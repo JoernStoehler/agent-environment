@@ -1,3 +1,0 @@
-# Honeycomb configuration
-export HONEYCOMB_API_KEY="your-honeycomb-api-key-here"
-export HONEYCOMB_DATASET="your-honeycomb-dataset-here"

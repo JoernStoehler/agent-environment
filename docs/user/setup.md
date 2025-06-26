@@ -13,9 +13,7 @@ This devcontainer is designed to mount your entire workspace directory structure
 
 ```
 your-workspaces-directory/        # This becomes /workspaces in container
-├── .envrc                        # Honeycomb credentials (shared across projects)
-├── .claude/                      # Claude settings (shared across projects)
-│   └── settings.json
+├── .envrc                        # (Optional) Environment variables for direnv
 ├── agent-environment/            # This repository
 │   ├── .devcontainer/
 │   │   ├── devcontainer.json
@@ -39,7 +37,7 @@ your-workspaces-directory/        # This becomes /workspaces in container
 First, decide where you want your development workspace. This should be a directory that will contain:
 - The agent-environment repository
 - Any other repositories you want to access from within the container
-- Shared configuration files (.envrc, .claude/)
+- Shared configuration files
 
 ```bash
 # Example: Create a dedicated workspace directory
@@ -62,13 +60,16 @@ Set up the required configuration files in your workspace root:
 ```bash
 # From your workspace directory (e.g., ~/workspaces)
 
-# Copy and configure the environment file
-cp agent-environment/.envrc.example .envrc
-# Edit .envrc and replace the placeholder values with your actual Honeycomb credentials
+# Configure Honeycomb credentials for OpenTelemetry collector
+cd agent-environment/.devcontainer
+cp .env.example .env
+# Edit .env and replace the placeholder values with your actual Honeycomb credentials
+# Note: .env file is gitignored and used by docker-compose for the OTEL collector
 
-# Copy Claude settings (if you don't have .claude directory already)
-mkdir -p .claude
-cp agent-environment/.claude/settings.json.example .claude/settings.json
+# Note: The container will mount your host's OAuth tokens:
+# - ~/.claude → /home/codespace/.claude (Claude CLI tokens)
+# - ~/.gemini → /home/codespace/.gemini (Gemini CLI tokens)
+# - ~/.config/gh → /home/codespace/.config/gh (GitHub CLI auth)
 ```
 
 ### 4. Open in Dev Container
@@ -89,7 +90,8 @@ Once the container starts:
 - Your entire workspace directory (e.g., `~/workspaces`) is mounted as `/workspaces`
 - The agent-environment project is at `/workspaces/agent-environment`
 - Any sibling directories are at `/workspaces/<directory-name>`
-- Configuration files are at `/workspaces/.envrc` and `/workspaces/.claude/`
+- Honeycomb credentials are in `/workspaces/agent-environment/.devcontainer/.env`
+- Claude telemetry is configured via environment variables in docker-compose.yml
 
 
 ## Verifying the Setup
@@ -106,12 +108,23 @@ ls /workspaces  # Should show all your workspace directories
 # Verify tools
 which rg jq tree direnv gh npm node claude uv
 
-# Check environment variables
-env | grep -E "(OTEL|CLAUDE|HONEYCOMB)"
+# Check telemetry environment variables
+env | grep -E "(OTEL|CLAUDE)"
+
+# Verify OTEL collector is running
+docker ps | grep otlp
+
+# Check mounted OAuth directories
+ls -la ~/.claude ~/.gemini ~/.config/gh
+
+# Test agent tools
+agent-worktree --help
+agent-monitor --help
 ```
 
 ## Troubleshooting
 
 - **"Folder not found" errors**: Ensure you're following the expected directory structure
-- **Missing environment variables**: Check that .envrc and .claude/settings.json exist in the workspace root
+- **Missing environment variables**: Check docker-compose.yml environment section
+- **No telemetry in Honeycomb**: Ensure .env file exists in .devcontainer/ with your Honeycomb credentials
 - **Can't access other projects**: Verify they're in the same parent directory as agent-environment

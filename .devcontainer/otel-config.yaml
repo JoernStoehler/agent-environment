@@ -6,25 +6,32 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
 exporters:
   debug:
     verbosity: detailed
   
-  # Honeycomb exporter (commented out for dummy setup)
-  # otlphttp/honeycomb:
-  #   endpoint: https://api.eu1.honeycomb.io
-  #   headers:
-  #     x-honeycomb-team: ${env:HONEYCOMB_API_KEY}
-  #     x-honeycomb-dataset: ${env:HONEYCOMB_DATASET}
+  otlphttp/honeycomb:
+    endpoint: https://api.eu1.honeycomb.io
+    headers:
+      x-honeycomb-team: ${env:HONEYCOMB_API_KEY}
+      x-honeycomb-dataset: ${env:HONEYCOMB_DATASET}
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [debug]  # Change to [otlphttp/honeycomb] when ready
+      processors: [batch]
+      exporters: [otlphttp/honeycomb]
     metrics:
       receivers: [otlp]
-      exporters: [debug]  # Change to [otlphttp/honeycomb] when ready
+      processors: [batch]
+      exporters: [otlphttp/honeycomb]
     logs:
       receivers: [otlp]
-      exporters: [debug]  # Change to [otlphttp/honeycomb] when ready
+      processors: [batch]
+      exporters: [otlphttp/honeycomb]

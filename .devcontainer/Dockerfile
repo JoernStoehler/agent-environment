@@ -33,3 +33,6 @@ RUN echo 'eval "$(direnv hook bash)"' >> ~/.bashrc \
 
 # Ensure uv is in PATH
 ENV PATH="/home/codespace/.cargo/bin:${PATH}"
+
+# Add agent tools to PATH
+ENV PATH="/workspaces/agent-environment/tools:${PATH}"

@@ -22,7 +22,7 @@
   },
   
   "remoteUser": "codespace",
-  "postCreateCommand": "echo 'Container ready!'",
+  "postCreateCommand": "/workspaces/agent-environment/.devcontainer/postCreateCommand/run-all.sh",
   
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {

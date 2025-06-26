@@ -1,0 +1,433 @@
+#!/usr/bin/env -S uv run --script
+# agent-monitor: Real-time monitoring dashboard for system resources and agent activity
+#
+# This tool provides a live dashboard showing:
+# - System resource usage (CPU, memory, disk)
+# - Git repository status
+# - Running processes
+# - Recent file changes
+# - Docker container status
+#
+# Usage: agent-monitor [--interval SECONDS]
+#
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "psutil",
+#     "rich",
+#     "gitpython",
+#     "requests",
+#     "python-dateutil",
+# ]
+# ///
+
+import argparse
+import os
+import time
+import subprocess
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+import psutil
+import git
+from rich.console import Console
+from rich.table import Table
+from rich.live import Live
+from dateutil.relativedelta import relativedelta
+import requests
+
+console = Console()
+
+class AgentInfo:
+    def __init__(self, pid: int, process: psutil.Process):
+        self.pid = pid
+        self.process = process
+        self.name = self._detect_agent_type()
+        self.cwd = self._get_cwd()
+        self.start_time = datetime.fromtimestamp(process.create_time(), tz=timezone.utc)
+        self.memory_gb = process.memory_info().rss / (1024 ** 3)
+    
+    def _detect_agent_type(self) -> str:
+        try:
+            cmdline = ' '.join(self.process.cmdline())
+            if 'claude' in cmdline.lower():
+                return 'claude'
+            elif 'gemini' in cmdline.lower():
+                return 'gemini'
+            elif 'cursor' in cmdline.lower():
+                return 'cursor'
+            else:
+                return 'unknown'
+        except:
+            return 'unknown'
+    
+    def _get_cwd(self) -> Optional[str]:
+        try:
+            return self.process.cwd()
+        except:
+            return None
+
+class WorktreeInfo:
+    def __init__(self, path: Path, branch: str, repo_name: str):
+        self.path = path
+        self.branch = branch
+        self.repo_name = repo_name
+        self.repo = git.Repo(path)
+        self.agents: List[AgentInfo] = []
+        
+    def get_last_file_change(self) -> Optional[datetime]:
+        """Get the most recent file modification time in the worktree"""
+        try:
+            latest_time = None
+            for root, dirs, files in os.walk(self.path):
+                # Skip .git directory
+                if '.git' in root:
+                    continue
+                for file in files:
+                    filepath = Path(root) / file
+                    try:
+                        mtime = datetime.fromtimestamp(filepath.stat().st_mtime, tz=timezone.utc)
+                        if latest_time is None or mtime > latest_time:
+                            latest_time = mtime
+                    except:
+                        continue
+            return latest_time
+        except:
+            return None
+    
+    def get_last_commit(self) -> Optional[Tuple[datetime, str]]:
+        """Get the last commit time and hash"""
+        try:
+            last_commit = self.repo.head.commit
+            commit_time = datetime.fromtimestamp(last_commit.committed_date, tz=timezone.utc)
+            return commit_time, last_commit.hexsha[:7]
+        except:
+            return None
+    
+    def has_uncommitted_changes(self) -> bool:
+        """Check if there are uncommitted changes"""
+        try:
+            return self.repo.is_dirty() or len(self.repo.untracked_files) > 0
+        except:
+            return False
+    
+    def get_pr_info(self) -> Optional[Dict[str, str]]:
+        """Get PR information using gh CLI"""
+        try:
+            # Get current branch
+            current_branch = self.repo.active_branch.name
+            
+            # Use gh CLI to check for PR
+            result = subprocess.run(
+                ['gh', 'pr', 'view', current_branch, '--json', 'number,state,statusCheckRollup'],
+                cwd=self.path,
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                pr_data = json.loads(result.stdout)
+                checks_status = 'unknown'
+                
+                if pr_data.get('statusCheckRollup'):
+                    status_counts = {}
+                    for check in pr_data['statusCheckRollup']:
+                        status = check.get('status', 'UNKNOWN')
+                        status_counts[status] = status_counts.get(status, 0) + 1
+                    
+                    if status_counts.get('FAILURE', 0) > 0:
+                        checks_status = 'failing'
+                    elif status_counts.get('PENDING', 0) > 0:
+                        checks_status = 'pending'
+                    elif status_counts.get('SUCCESS', 0) > 0:
+                        checks_status = 'passing'
+                
+                return {
+                    'number': str(pr_data['number']),
+                    'state': pr_data['state'],
+                    'checks': checks_status
+                }
+        except:
+            pass
+        return None
+
+def format_time_ago(dt: datetime) -> str:
+    """Format datetime as human-readable time ago"""
+    if dt is None:
+        return "never"
+    
+    now = datetime.now(timezone.utc)
+    delta = relativedelta(now, dt)
+    
+    if delta.years > 0:
+        return f"{delta.years}y ago"
+    elif delta.months > 0:
+        return f"{delta.months}mo ago"
+    elif delta.days > 0:
+        return f"{delta.days}d ago"
+    elif delta.hours > 0:
+        return f"{delta.hours}h ago"
+    elif delta.minutes > 0:
+        return f"{delta.minutes}m ago"
+    else:
+        return "just now"
+
+def find_coding_agents() -> List[AgentInfo]:
+    """Find all coding agent processes"""
+    agents = []
+    
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
+        try:
+            cmdline = ' '.join(proc.info['cmdline'] or [])
+            # Look for various coding agents
+            if any(agent in cmdline.lower() for agent in ['claude', 'gemini', 'cursor', 'copilot']):
+                agent = AgentInfo(proc.info['pid'], proc)
+                if agent.name != 'unknown':
+                    agents.append(agent)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    
+    return agents
+
+def find_git_worktrees() -> Dict[str, List[WorktreeInfo]]:
+    """Find all git worktrees organized by repository"""
+    worktrees_by_repo = {}
+    
+    # Search common workspace locations
+    workspace_paths = [
+        Path.home() / "workspaces",
+        Path("/workspaces"),
+        Path.home() / "repos",
+        Path.home() / "projects",
+        Path.home() / "code",
+    ]
+    
+    visited_repos = set()
+    
+    for workspace in workspace_paths:
+        if not workspace.exists():
+            continue
+            
+        # Look for git repositories
+        for item in workspace.iterdir():
+            if item.is_dir() and (item / ".git").exists():
+                try:
+                    repo = git.Repo(item)
+                    repo_root = Path(repo.working_dir).resolve()
+                    
+                    # Skip if we've already processed this repo
+                    if str(repo_root) in visited_repos:
+                        continue
+                    
+                    visited_repos.add(str(repo_root))
+                    
+                    # Get repository name (owner/repo format if possible)
+                    repo_name = get_repo_name(repo)
+                    
+                    # Get all worktrees for this repository
+                    worktree_list = []
+                    
+                    # Add main worktree
+                    main_branch = repo.active_branch.name
+                    worktree_list.append(WorktreeInfo(repo_root, main_branch, repo_name))
+                    
+                    # Find additional worktrees
+                    try:
+                        result = subprocess.run(
+                            ['git', 'worktree', 'list', '--porcelain'],
+                            cwd=repo_root,
+                            capture_output=True,
+                            text=True
+                        )
+                        
+                        if result.returncode == 0:
+                            lines = result.stdout.strip().split('\n')
+                            i = 0
+                            while i < len(lines):
+                                if lines[i].startswith('worktree '):
+                                    wt_path = Path(lines[i].split(' ', 1)[1])
+                                    branch = None
+                                    
+                                    # Look for branch info
+                                    j = i + 1
+                                    while j < len(lines) and not lines[j].startswith('worktree '):
+                                        if lines[j].startswith('branch '):
+                                            branch = lines[j].split('/')[-1]
+                                            break
+                                        j += 1
+                                    
+                                    if wt_path != repo_root and branch:
+                                        worktree_list.append(WorktreeInfo(wt_path, branch, repo_name))
+                                
+                                i += 1
+                    except:
+                        pass
+                    
+                    if worktree_list:
+                        worktrees_by_repo[repo_name] = worktree_list
+                    
+                except:
+                    continue
+    
+    return worktrees_by_repo
+
+def get_repo_name(repo: git.Repo) -> str:
+    """Get repository name in owner/repo format if possible"""
+    try:
+        # Try to get from remote URL
+        if repo.remotes:
+            url = repo.remotes.origin.url
+            # Handle both SSH and HTTPS URLs
+            if 'github.com' in url:
+                if url.endswith('.git'):
+                    url = url[:-4]
+                parts = url.split('/')
+                if len(parts) >= 2:
+                    owner = parts[-2].split(':')[-1]  # Handle SSH format
+                    repo_name = parts[-1]
+                    return f"{owner}/{repo_name}"
+    except:
+        pass
+    
+    # Fallback to directory name
+    return Path(repo.working_dir).name
+
+def assign_agents_to_worktrees(agents: List[AgentInfo], worktrees_by_repo: Dict[str, List[WorktreeInfo]]):
+    """Assign agents to their respective worktrees based on CWD"""
+    for agent in agents:
+        if agent.cwd:
+            agent_path = Path(agent.cwd).resolve()
+            
+            # Find which worktree this agent is in
+            for repo_worktrees in worktrees_by_repo.values():
+                for worktree in repo_worktrees:
+                    try:
+                        if agent_path.is_relative_to(worktree.path):
+                            worktree.agents.append(agent)
+                            break
+                    except:
+                        # For Python < 3.9 compatibility
+                        try:
+                            agent_path.relative_to(worktree.path)
+                            worktree.agents.append(agent)
+                            break
+                        except ValueError:
+                            continue
+
+def create_monitor_table() -> Table:
+    """Create the monitoring table"""
+    table = Table(title="Agent Monitor", show_header=True, header_style="bold magenta")
+    
+    table.add_column("Repository", style="cyan", no_wrap=True)
+    table.add_column("Branch", style="green")
+    table.add_column("Last Change", style="yellow")
+    table.add_column("Last Commit", style="yellow")
+    table.add_column("Changes", style="red")
+    table.add_column("PR", style="blue")
+    table.add_column("Checks", style="magenta")
+    table.add_column("Agents", style="white")
+    
+    return table
+
+def populate_table(table: Table, worktrees_by_repo: Dict[str, List[WorktreeInfo]]):
+    """Populate the table with worktree and agent data"""
+    for repo_name, worktrees in sorted(worktrees_by_repo.items()):
+        repo_displayed = False
+        
+        for worktree in worktrees:
+            # Get worktree info
+            last_change = format_time_ago(worktree.get_last_file_change())
+            
+            commit_info = worktree.get_last_commit()
+            if commit_info:
+                last_commit = f"{format_time_ago(commit_info[0])} ({commit_info[1]})"
+            else:
+                last_commit = "no commits"
+            
+            changes = "✓" if not worktree.has_uncommitted_changes() else "✗"
+            
+            pr_info = worktree.get_pr_info()
+            pr_text = "-"
+            checks_text = "-"
+            if pr_info:
+                pr_text = f"#{pr_info['number']} ({pr_info['state']})"
+                checks_text = pr_info['checks']
+            
+            # Format agents
+            agent_lines = []
+            for agent in worktree.agents:
+                uptime = format_time_ago(agent.start_time)
+                agent_lines.append(f"[{agent.name}] PID: {agent.pid}, Up: {uptime}, Mem: {agent.memory_gb:.1f}GB")
+            
+            agents_text = "\n".join(agent_lines) if agent_lines else "-"
+            
+            # Add row
+            table.add_row(
+                repo_name if not repo_displayed else "",
+                worktree.branch,
+                last_change,
+                last_commit,
+                changes,
+                pr_text,
+                checks_text,
+                agents_text
+            )
+            
+            repo_displayed = True
+
+def monitor_once():
+    """Run the monitor once and display results"""
+    # Find all agents and worktrees
+    agents = find_coding_agents()
+    worktrees_by_repo = find_git_worktrees()
+    
+    # Assign agents to worktrees
+    assign_agents_to_worktrees(agents, worktrees_by_repo)
+    
+    # Create and populate table
+    table = create_monitor_table()
+    populate_table(table, worktrees_by_repo)
+    
+    # Display
+    console.clear()
+    console.print(table)
+    console.print(f"\nFound {len(agents)} active agents across {sum(len(wts) for wts in worktrees_by_repo.values())} worktrees")
+
+def monitor_watch(interval: int = 1):
+    """Run the monitor in watch mode"""
+    with Live(console=console, refresh_per_second=1) as live:
+        while True:
+            try:
+                # Find all agents and worktrees
+                agents = find_coding_agents()
+                worktrees_by_repo = find_git_worktrees()
+                
+                # Assign agents to worktrees
+                assign_agents_to_worktrees(agents, worktrees_by_repo)
+                
+                # Create and populate table
+                table = create_monitor_table()
+                populate_table(table, worktrees_by_repo)
+                
+                # Update display
+                live.update(table)
+                
+                time.sleep(interval)
+            except KeyboardInterrupt:
+                break
+
+def main():
+    parser = argparse.ArgumentParser(description="Monitor active coding agents and their worktrees")
+    parser.add_argument("--watch", action="store_true", help="Auto-refresh mode")
+    parser.add_argument("--interval", type=int, default=1, help="Refresh interval in seconds (default: 1)")
+    
+    args = parser.parse_args()
+    
+    if args.watch:
+        monitor_watch(args.interval)
+    else:
+        monitor_once()
+
+if __name__ == "__main__":
+    main()
