@@ -9,8 +9,7 @@ set -euo pipefail
 #   - Validating repository state before operations (checks for uncommitted changes)
 #   - Copying important untracked files (.env, .envrc, etc.) to new worktrees
 #   - Running setup scripts automatically in new worktrees
-#   - Optionally changing directory after creation (-c flag)
-#   - Optionally running development tools after setup (--claude, --gemini)
+#   - Optionally starting a new shell or development tool in the worktree (--bash, --claude, --gemini)
 #
 # USAGE:
 #   agent-worktree [OPTIONS] add <branch-name>     Create a new worktree with the given branch
@@ -48,7 +47,7 @@ set -euo pipefail
 #   
 #   The completion script provides intelligent suggestions for:
 #   - Commands (add, remove)
-#   - Options (--dry-run, -c, --claude, --gemini, etc.)
+#   - Options (--dry-run, --bash, --claude, --gemini, etc.)
 #   - Branch names (context-aware based on command)
 
 # Colors for output
