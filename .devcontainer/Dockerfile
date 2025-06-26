@@ -27,9 +27,13 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 # Install Claude Code CLI globally using existing npm
 RUN npm install -g @anthropic-ai/claude-code
 
+# Install Gemini CLI globally using existing npm
+RUN npm install -g @google/gemini-cli
+
 # Configure direnv hook for bash and zsh
 RUN echo 'eval "$(direnv hook bash)"' >> ~/.bashrc \
     && echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
+
 
 # Ensure uv is in PATH
 ENV PATH="/home/codespace/.cargo/bin:${PATH}"
