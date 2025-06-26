@@ -23,6 +23,7 @@
   
   "remoteUser": "codespace",
   "postCreateCommand": "/workspaces/agent-environment/.devcontainer/postCreateCommand/run-all.sh",
+  "shutdownAction": "none",
   
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {

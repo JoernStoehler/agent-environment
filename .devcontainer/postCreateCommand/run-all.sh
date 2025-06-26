@@ -1,12 +1,25 @@
 #!/bin/bash
-# Execute all scripts in postCreateCommand directory in alphabetical order
+# Orchestrates execution of all post-create setup scripts
 #
-# This script is called by devcontainer.json's postCreateCommand.
-# It finds and executes all *.sh files in this directory (except itself)
-# in alphabetical order. Scripts should follow naming convention:
-# <number>-<descriptive-name>.sh (e.g., 10-check-honeycomb-setup.sh)
+# Purpose:
+#   Single entry point for devcontainer post-create initialization.
+#   Ensures consistent execution order and proper error handling.
 #
-# If any script exits with non-zero code, execution stops and error is reported.
+# Effects:
+#   - Executes all *.sh files in current directory (except itself)
+#   - Stops execution on first script failure
+#   - Returns exit code of failed script or 0 on success
+#
+# Assumptions:
+#   - Called from devcontainer.json postCreateCommand
+#   - Scripts follow naming convention: NN-description.sh
+#   - All scripts have execute permissions
+#
+# Design rationale:
+#   - Numeric prefixes ensure deterministic execution order
+#   - find + sort provides cross-platform compatibility
+#   - Fail-fast behavior prevents cascading errors
+#   - Clear output formatting aids debugging
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
