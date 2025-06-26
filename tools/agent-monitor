@@ -11,7 +11,7 @@
 # Usage: agent-monitor [--interval SECONDS]
 #
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12"
 # dependencies = [
 #     "psutil",
 #     "rich",
@@ -35,7 +35,6 @@ from rich.console import Console
 from rich.table import Table
 from rich.live import Live
 from dateutil.relativedelta import relativedelta
-import requests
 
 console = Console()
 
@@ -59,13 +58,15 @@ class AgentInfo:
                 return 'cursor'
             else:
                 return 'unknown'
-        except:
+        except Exception as e:
+            console.print(f"[yellow]Warning: Failed to detect agent type for PID {self.pid}: {e}[/yellow]")
             return 'unknown'
     
     def _get_cwd(self) -> Optional[str]:
         try:
             return self.process.cwd()
-        except:
+        except Exception as e:
+            console.print(f"[yellow]Warning: Failed to get CWD for PID {self.pid}: {e}[/yellow]")
             return None
 
 class WorktreeInfo:
@@ -90,10 +91,12 @@ class WorktreeInfo:
                         mtime = datetime.fromtimestamp(filepath.stat().st_mtime, tz=timezone.utc)
                         if latest_time is None or mtime > latest_time:
                             latest_time = mtime
-                    except:
+                    except Exception as e:
+                        console.print(f"[yellow]Warning: Failed to get mtime for {filepath}: {e}[/yellow]")
                         continue
             return latest_time
-        except:
+        except Exception as e:
+            console.print(f"[yellow]Warning: Failed to get last file change for {self.path}: {e}[/yellow]")
             return None
     
     def get_last_commit(self) -> Optional[Tuple[datetime, str]]:
@@ -102,14 +105,16 @@ class WorktreeInfo:
             last_commit = self.repo.head.commit
             commit_time = datetime.fromtimestamp(last_commit.committed_date, tz=timezone.utc)
             return commit_time, last_commit.hexsha[:7]
-        except:
+        except Exception as e:
+            console.print(f"[yellow]Warning: Failed to get last commit for {self.path}: {e}[/yellow]")
             return None
     
     def has_uncommitted_changes(self) -> bool:
         """Check if there are uncommitted changes"""
         try:
             return self.repo.is_dirty() or len(self.repo.untracked_files) > 0
-        except:
+        except Exception as e:
+            console.print(f"[yellow]Warning: Failed to check uncommitted changes for {self.path}: {e}[/yellow]")
             return False
     
     def get_pr_info(self) -> Optional[Dict[str, str]]:
@@ -148,8 +153,8 @@ class WorktreeInfo:
                     'state': pr_data['state'],
                     'checks': checks_status
                 }
-        except:
-            pass
+        except Exception as e:
+            console.print(f"[yellow]Warning: Failed to get PR info for {self.path}: {e}[/yellow]")
         return None
 
 def format_time_ago(dt: datetime) -> str:
@@ -261,13 +266,14 @@ def find_git_worktrees() -> Dict[str, List[WorktreeInfo]]:
                                         worktree_list.append(WorktreeInfo(wt_path, branch, repo_name))
                                 
                                 i += 1
-                    except:
-                        pass
+                    except Exception as e:
+                        console.print(f"[yellow]Warning: Failed to get worktrees for {repo_root}: {e}[/yellow]")
                     
                     if worktree_list:
                         worktrees_by_repo[repo_name] = worktree_list
                     
-                except:
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Failed to process repository at {item}: {e}[/yellow]")
                     continue
     
     return worktrees_by_repo
@@ -287,8 +293,8 @@ def get_repo_name(repo: git.Repo) -> str:
                     owner = parts[-2].split(':')[-1]  # Handle SSH format
                     repo_name = parts[-1]
                     return f"{owner}/{repo_name}"
-    except:
-        pass
+    except Exception as e:
+        console.print(f"[yellow]Warning: Failed to get repository name: {e}[/yellow]")
     
     # Fallback to directory name
     return Path(repo.working_dir).name
@@ -302,18 +308,9 @@ def assign_agents_to_worktrees(agents: List[AgentInfo], worktrees_by_repo: Dict[
             # Find which worktree this agent is in
             for repo_worktrees in worktrees_by_repo.values():
                 for worktree in repo_worktrees:
-                    try:
-                        if agent_path.is_relative_to(worktree.path):
-                            worktree.agents.append(agent)
-                            break
-                    except:
-                        # For Python < 3.9 compatibility
-                        try:
-                            agent_path.relative_to(worktree.path)
-                            worktree.agents.append(agent)
-                            break
-                        except ValueError:
-                            continue
+                    if agent_path.is_relative_to(worktree.path):
+                        worktree.agents.append(agent)
+                        break
 
 def create_monitor_table() -> Table:
     """Create the monitoring table"""
@@ -332,6 +329,19 @@ def create_monitor_table() -> Table:
 
 def populate_table(table: Table, worktrees_by_repo: Dict[str, List[WorktreeInfo]]):
     """Populate the table with worktree and agent data"""
+    if not worktrees_by_repo:
+        table.add_row(
+            "[dim]No worktrees found[/dim]",
+            "-",
+            "-", 
+            "-",
+            "-",
+            "-",
+            "-",
+            "[dim]Searched: ~/workspaces, /workspaces, ~/repos, ~/projects, ~/code[/dim]"
+        )
+        return
+    
     for repo_name, worktrees in sorted(worktrees_by_repo.items()):
         repo_displayed = False
         

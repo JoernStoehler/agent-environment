@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 # Validates OpenTelemetry collector and Honeycomb configuration
 #
 # Purpose:

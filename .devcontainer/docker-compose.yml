@@ -6,13 +6,20 @@
 #
 # Volumes:
 #   - gh-auth: Named volume for GitHub CLI credentials
-#   - Host bind mounts for .claude and .gemini directories
+#   - claude-config: Named volume for Claude configuration
+#   - gemini-config: Named volume for Gemini configuration
 #
 # Note: All services start automatically when devcontainer is opened
 #       (runServices defaults to all when not specified)
+#
+# To disable OTLP telemetry:
+#   - Add to devcontainer.json: "runServices": ["devcontainer"]
+#   - Or set environment: DISABLE_OTLP=true (requires devcontainer rebuild)
 
 volumes:
   gh-auth:
+  claude-config:
+  gemini-config:
 
 services:
   devcontainer:
@@ -21,8 +28,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ../..:/workspaces:cached
-      - ~/.claude:/home/codespace/.claude
-      - ~/.gemini:/home/codespace/.gemini
+      - claude-config:/home/codespace/.claude
+      - gemini-config:/home/codespace/.gemini
       - gh-auth:/home/codespace/.config/gh
     command: sleep infinity
     environment:
@@ -36,6 +43,8 @@ services:
   otlp:
     image: otel/opentelemetry-collector:latest
     restart: unless-stopped
+    profiles:
+      - with-telemetry
     ports:
       - "4317:4317"  # OTLP gRPC receiver
       - "4318:4318"  # OTLP HTTP receiver

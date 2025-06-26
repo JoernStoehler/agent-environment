@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 # Orchestrates execution of all post-create setup scripts
 #
 # Purpose:
@@ -27,7 +28,8 @@ echo "Running post-create commands..."
 echo ""
 
 # Find and execute all .sh files except this one, sorted alphabetically
-for script in $(find "$SCRIPT_DIR" -name "*.sh" -not -name "run-all.sh" | sort); do
+# Using while read to handle filenames with spaces properly
+find "$SCRIPT_DIR" -name "*.sh" -not -name "run-all.sh" | sort | while IFS= read -r script; do
     if [ -x "$script" ]; then
         echo "▶ Running: $(basename "$script")"
         echo "─────────────────────────────────────────"
