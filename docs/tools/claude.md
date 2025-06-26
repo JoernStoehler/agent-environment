@@ -12,9 +12,9 @@ npm install -g @anthropic-ai/claude-code
 ## Configuration
 
 ### Configuration Directory
-- **Location**: `/workspaces/.claude-config/`
-- **Environment Variable**: `CLAUDE_CONFIG_DIR=/workspaces/.claude-config`
+- **Location**: `~/.claude` (symlinked to `/workspaces/.claude-config/`)
 - **Purpose**: Stores API keys, settings, and session data across container rebuilds
+- **Note**: The `~/.claude` directory is automatically symlinked to `/workspaces/.claude-config/` via devcontainer's postCreateCommand
 
 ### Settings Files
 Claude Code uses multiple configuration files:
@@ -23,7 +23,6 @@ Claude Code uses multiple configuration files:
 
 ### Environment Variables
 The following environment variables are configured in the devcontainer:
-- `CLAUDE_CONFIG_DIR=/workspaces/.claude-config` - Sets config directory
 - `CLAUDE_CODE_ENABLE_TELEMETRY=1` - Enables telemetry
 - `OTEL_SERVICE_NAME=claude-code` - Service name for telemetry
 - `OTEL_METRICS_EXPORTER=otlp` - Metrics exporter
@@ -149,20 +148,20 @@ Example MCP configuration:
 - `/settings` - View/edit settings
 
 ## Persistence
-All Claude Code data persists in `/workspaces/.claude-config/`:
+All Claude Code data persists in `/workspaces/.claude-config/` through the symlinked `~/.claude` directory:
 - API keys
 - User settings
 - Conversation history
 - MCP server configurations
 
-This ensures your configuration is maintained across container rebuilds.
+This ensures your configuration is maintained across container rebuilds. The symlink is created automatically when the devcontainer starts.
 
 ## Troubleshooting
 
 ### API Key Issues
 If Claude Code can't find your API key:
 1. Check if it's set: `echo $ANTHROPIC_API_KEY`
-2. Verify settings file: `cat /workspaces/.claude-config/settings.json`
+2. Verify settings file: `cat ~/.claude/settings.json`
 3. Re-run setup: `claude config set`
 
 ### Telemetry Connection Issues
@@ -177,6 +176,8 @@ If you encounter permission errors:
 # Fix permissions on config directory
 sudo chown -R codespace:codespace /workspaces/.claude-config
 chmod 700 /workspaces/.claude-config
+# Verify symlink is correct
+ls -la ~/.claude
 ```
 
 ## Additional Resources

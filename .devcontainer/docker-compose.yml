@@ -31,7 +31,6 @@ services:
     command: sleep infinity
     environment:
       - CLAUDE_CODE_ENABLE_TELEMETRY=1
-      - CLAUDE_CONFIG_DIR=/workspaces/.claude-config
 
   otlp:
     image: otel/opentelemetry-collector:latest
