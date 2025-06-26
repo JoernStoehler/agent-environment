@@ -6,8 +6,9 @@
 #
 # Volumes:
 #   - gh-auth: Named volume for GitHub CLI credentials
-#   - claude-config: Named volume for Claude configuration
-#   - gemini-config: Named volume for Gemini configuration
+#
+# Note: Claude and Gemini configs are stored in /workspaces/.claude-config 
+#       and /workspaces/.gemini-config respectively for persistence
 #
 # Note: All services start automatically when devcontainer is opened
 #       (runServices defaults to all when not specified)
@@ -18,8 +19,6 @@
 
 volumes:
   gh-auth:
-  claude-config:
-  gemini-config:
 
 services:
   devcontainer:
@@ -28,12 +27,11 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ../..:/workspaces:cached
-      - claude-config:/home/codespace/.claude
-      - gemini-config:/home/codespace/.gemini
       - gh-auth:/home/codespace/.config/gh
     command: sleep infinity
     environment:
       - CLAUDE_CODE_ENABLE_TELEMETRY=1
+      - CLAUDE_CONFIG_DIR=/workspaces/.claude-config
       - OTEL_SERVICE_NAME=claude-code
       - OTEL_METRICS_EXPORTER=otlp
       - OTEL_LOGS_EXPORTER=otlp
