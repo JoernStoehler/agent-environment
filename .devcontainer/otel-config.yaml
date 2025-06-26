@@ -1,0 +1,30 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+  
+  # Honeycomb exporter (commented out for dummy setup)
+  # otlphttp/honeycomb:
+  #   endpoint: https://api.eu1.honeycomb.io
+  #   headers:
+  #     x-honeycomb-team: ${env:HONEYCOMB_API_KEY}
+  #     x-honeycomb-dataset: ${env:HONEYCOMB_DATASET}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]  # Change to [otlphttp/honeycomb] when ready
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]  # Change to [otlphttp/honeycomb] when ready
+    logs:
+      receivers: [otlp]
+      exporters: [debug]  # Change to [otlphttp/honeycomb] when ready
