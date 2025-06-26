@@ -1,30 +1,31 @@
 #!/bin/bash
-# Verifies and fixes permissions for mounted volumes
+# Verifies and fixes permissions for Docker mounted volumes
 #
 # Purpose:
-#   Ensures the dev container user can access mounted directories for
-#   storing credentials and configuration files.
+#   Ensures the dev container user can access Docker volumes for
+#   storing credentials and configuration files that persist across rebuilds.
 #
 # Effects:
 #   - Checks write permissions on Docker volume directories
-#   - Changes ownership of Docker volumes to current user
-#   - Creates directories if they don't exist
+#   - Changes ownership of Docker volumes to current user if needed
+#   - Creates directories if they don't exist (for new volumes)
 #
 # Assumptions:
 #   - HOME environment variable is set
 #   - Current user has sudo access (standard in dev containers)
-#   - ~/.claude, ~/.gemini, and ~/.config/gh are Docker named volumes
+#   - Docker volumes are properly mounted via docker-compose.yml
 #
 # Design rationale:
-#   - Fixes permissions on all Docker-managed volumes
-#   - Creates directories if they don't exist
+#   - Docker volumes provide idiomatic persistence across container rebuilds
+#   - All config directories (.claude, .gemini, .config/gh) use the same approach
+#   - Consistent permissions management for all mounted volumes
 #   - set -e ensures script fails on unexpected errors
 
 set -e
 
 echo "🔧 Checking mounted directory permissions..."
 
-# .claude, .gemini, and .config/gh are Docker named volumes
+# All config directories are now Docker named volumes
 for dir in "$HOME/.claude" "$HOME/.gemini" "$HOME/.config/gh"; do
     if [ -d "$dir" ]; then
         if [ ! -w "$dir" ]; then

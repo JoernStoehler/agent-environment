@@ -12,9 +12,10 @@ npm install -g @anthropic-ai/claude-code
 ## Configuration
 
 ### Configuration Directory
-- **Location**: `~/.claude` (symlinked to `/workspaces/.claude-config/`)
+- **Location**: `~/.claude` (Docker named volume)
 - **Purpose**: Stores API keys, settings, and session data across container rebuilds
-- **Note**: The `~/.claude` directory is automatically symlinked to `/workspaces/.claude-config/` via devcontainer's postCreateCommand
+- **Note**: The `~/.claude` directory is mounted as a Docker volume for persistence
+- **Config file**: `~/.claude/.claude.json` stores user preferences and project history
 
 ### Settings Files
 Claude Code uses multiple configuration files:
@@ -148,13 +149,13 @@ Example MCP configuration:
 - `/settings` - View/edit settings
 
 ## Persistence
-All Claude Code data persists in `/workspaces/.claude-config/` through the symlinked `~/.claude` directory:
+All Claude Code data persists in the `claude-config` Docker volume at `~/.claude/`:
 - API keys
-- User settings
+- User settings (in `.claude.json`)
 - Conversation history
 - MCP server configurations
 
-This ensures your configuration is maintained across container rebuilds. The symlink is created automatically when the devcontainer starts.
+This ensures your configuration is maintained across container rebuilds. The volume is mounted automatically when the devcontainer starts.
 
 ## Troubleshooting
 
@@ -174,10 +175,10 @@ If telemetry isn't working:
 If you encounter permission errors:
 ```bash
 # Fix permissions on config directory
-sudo chown -R codespace:codespace /workspaces/.claude-config
-chmod 700 /workspaces/.claude-config
-# Verify symlink is correct
-ls -la ~/.claude
+sudo chown -R codespace:codespace ~/.claude
+chmod 700 ~/.claude
+# Verify volume is mounted
+df -h ~/.claude
 ```
 
 ## Additional Resources

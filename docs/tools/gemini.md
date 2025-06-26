@@ -12,12 +12,12 @@ npm install -g @google/gemini-cli
 ## Configuration
 
 ### Configuration Directory
-- **Location**: `/workspaces/.gemini-config/`
-- **Symlink**: `~/.gemini` → `/workspaces/.gemini-config/`
+- **Location**: `~/.gemini` (Docker named volume)
 - **Purpose**: Ensures OAuth tokens and settings persist across container rebuilds
+- **Note**: The `~/.gemini` directory is mounted as a Docker volume for persistence
 
 ### Settings File
-Configuration is stored in `/workspaces/.gemini-config/settings.json`:
+Configuration is stored in `~/.gemini/settings.json`:
 ```json
 {
   "telemetry": {
@@ -30,7 +30,7 @@ Configuration is stored in `/workspaces/.gemini-config/settings.json`:
 ```
 
 ### Environment Variables
-Gemini CLI doesn't support a custom config directory environment variable, so we use a symlink approach. OTLP telemetry variables are inherited from the container environment.
+Gemini CLI doesn't support a custom config directory environment variable. OTLP telemetry variables are inherited from the container environment.
 
 ## Getting Started
 
@@ -85,7 +85,7 @@ Telemetry is automatically configured to send data to the local OTLP collector:
 - **Service Name**: `gemini-cli`
 - **Data**: Traces, metrics, and logs (without prompts by default)
 
-To disable telemetry, edit `/workspaces/.gemini-config/settings.json`:
+To disable telemetry, edit `~/.gemini/settings.json`:
 ```json
 {
   "telemetry": {
@@ -98,7 +98,7 @@ To disable telemetry, edit `/workspaces/.gemini-config/settings.json`:
 Gemini CLI supports Model Context Protocol (MCP) servers for extending functionality. Configure them in your project's `.gemini/mcp.json` file.
 
 ## Persistence
-All Gemini CLI data persists in `/workspaces/.gemini-config/`:
+All Gemini CLI data persists in the `gemini-config` Docker volume at `~/.gemini/`:
 - OAuth tokens
 - User settings
 - Shell history (per project)
@@ -110,25 +110,21 @@ This ensures you only need to authenticate once and your preferences are maintai
 
 ### OAuth Token Issues
 If you're having authentication issues:
-1. Check if `/workspaces/.gemini-config/` exists and has proper permissions
+1. Check if `~/.gemini/` exists and has proper permissions
 2. Try removing the directory and re-authenticating:
    ```bash
-   rm -rf /workspaces/.gemini-config
-   rm -f ~/.gemini  # Remove symlink
+   rm -rf ~/.gemini
    gemini
    ```
 
 ### Configuration Not Loading
-Ensure the symlink exists:
+Ensure the volume is mounted:
 ```bash
-ls -la ~/.gemini
-# Should show: .gemini -> /workspaces/.gemini-config
+df -h ~/.gemini
+# Should show it's mounted as a Docker volume
 ```
 
-If missing, recreate it:
-```bash
-ln -s /workspaces/.gemini-config ~/.gemini
-```
+If not mounted, check the docker-compose.yml configuration.
 
 ## Additional Resources
 - [Official GitHub Repository](https://github.com/google-gemini/gemini-cli)
