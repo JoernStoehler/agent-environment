@@ -72,6 +72,27 @@ cp .env.example .env
 # - ~/.config/gh → /home/codespace/.config/gh (GitHub CLI auth)
 ```
 
+### 3.1. Configure MCP Servers (Optional)
+
+To enable Model Context Protocol (MCP) servers for Claude Code (web search, documentation search):
+
+```bash
+# From your workspace directory (e.g., ~/workspaces)
+
+# Copy the MCP configuration example
+cp agent-environment/.mcp.json.example .mcp.json
+
+# The .mcp.json uses environment variables for API keys
+# TAVILY_API_KEY is already configured in .devcontainer/.env
+# Context7 doesn't require an API key
+```
+
+The `.mcp.json` file configures:
+- **Tavily**: Web search capabilities (requires API key from https://tavily.com)
+- **Context7**: Up-to-date code documentation search
+
+Note: Claude Code searches for `.mcp.json` files in the current directory and parent directories, so placing it in `/workspaces` makes it available to all projects.
+
 ### 4. Open in Dev Container
 
 ```bash
