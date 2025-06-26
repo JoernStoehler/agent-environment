@@ -1,11 +1,55 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# agent-worktree: Simplified git worktree management with validation
-# Usage:
-#   agent-worktree add feat/add-gpu
-#   agent-worktree remove feat/add-gpu
-#   agent-worktree --dry-run add feat/add-gpu
+# agent-worktree: Git worktree management tool with automatic setup and validation
+#
+# DESCRIPTION:
+#   This tool simplifies git worktree management by:
+#   - Creating new worktrees with automatic branch creation
+#   - Validating repository state before operations (checks for uncommitted changes)
+#   - Copying important untracked files (.env, .envrc, etc.) to new worktrees
+#   - Running setup scripts automatically in new worktrees
+#   - Optionally changing directory after creation (-c flag)
+#   - Optionally running development tools after setup (--claude, --gemini)
+#
+# USAGE:
+#   agent-worktree [OPTIONS] add <branch-name>     Create a new worktree with the given branch
+#   agent-worktree [OPTIONS] remove <branch-name>  Remove an existing worktree
+#   agent-worktree -h, --help                      Show this help message
+#
+# OPTIONS:
+#   --dry-run        Preview what would happen without making changes
+#   --bash           Start a new bash shell in the worktree directory after creation
+#   --claude         Start 'claude --dangerously-skip-permissions' in the worktree directory
+#   --gemini         Start 'gemini --yolo' in the worktree directory
+#
+# EXAMPLES:
+#   agent-worktree add feat/new-feature            Create worktree and stay in current directory
+#   agent-worktree --bash add feat/new-feature     Create worktree and start new shell in it
+#   agent-worktree --claude add feat/new-fix       Create worktree and start claude in it
+#   agent-worktree --gemini add feat/new-fix       Create worktree and start gemini in it
+#   agent-worktree --dry-run add feat/test         Preview worktree creation without doing it
+#   agent-worktree remove feat/old-feature         Remove worktree and optionally delete branch
+#
+# NOTES:
+#   - Branch names are automatically validated for git compatibility
+#   - Worktrees are created in the parent directory of the main repository
+#   - Forward slashes in branch names are converted to hyphens for directory names
+#   - The tool ensures your local branch is in sync with remote before operations
+#   - Untracked config files (.env, .envrc, etc.) are automatically copied to new worktrees
+#   - If a setup.sh script exists, it will be run automatically in the new worktree
+#
+# AUTOCOMPLETE:
+#   To enable bash completion, source the completion script:
+#   source /path/to/agent-worktree-completion.bash
+#   
+#   Or add it to your .bashrc/.bash_profile for permanent completion:
+#   echo 'source /path/to/agent-worktree-completion.bash' >> ~/.bashrc
+#   
+#   The completion script provides intelligent suggestions for:
+#   - Commands (add, remove)
+#   - Options (--dry-run, -c, --claude, --gemini, etc.)
+#   - Branch names (context-aware based on command)
 
 # Colors for output
 RED='\033[0;31m'
@@ -14,8 +58,11 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 BLUE='\033[0;34m'
 
-# Global dry-run flag
+# Global flags
 DRY_RUN=false
+RUN_BASH=false
+RUN_CLAUDE=false
+RUN_GEMINI=false
 
 error() {
     echo -e "${RED}Error: $1${NC}" >&2
@@ -34,25 +81,27 @@ info() {
     echo -e "$1"
 }
 
+# Show help message
+show_help() {
+    # Extract help from the header comments
+    sed -n '4,/^$/p' "$0" | sed 's/^# //; s/^#$//'
+    exit 0
+}
+
 dry_run_info() {
-    if [ "$DRY_RUN" = true ]; then
+    if [[ "$DRY_RUN" == "true" ]]; then
         echo -e "${BLUE}[DRY RUN] Would execute: $1${NC}"
     fi
 }
 
 # Validate we're in a git repository
 validate_git_repo() {
-    if ! git rev-parse --git-dir > /dev/null 2>&1; then
-        error "Not in a git repository"
-    fi
+    git rev-parse --git-dir > /dev/null 2>&1 || error "Not in a git repository"
 }
 
 # Check for uncommitted changes
 check_uncommitted_changes() {
-    if ! git diff --quiet || ! git diff --cached --quiet; then
-        return 1
-    fi
-    return 0
+    git diff --quiet && git diff --cached --quiet
 }
 
 # Check if local branch is up to date with remote
@@ -71,15 +120,15 @@ check_remote_sync() {
     local local_commit=$(git rev-parse HEAD)
     local remote_commit=$(git rev-parse "$upstream")
     
-    if [ "$local_commit" != "$remote_commit" ]; then
+    if [[ "$local_commit" != "$remote_commit" ]]; then
         local behind=$(git rev-list --count HEAD.."$upstream")
         local ahead=$(git rev-list --count "$upstream"..HEAD)
         
-        if [ "$behind" -gt 0 ]; then
+        if [[ "$behind" -gt 0 ]]; then
             error "Local branch is $behind commits behind remote. Please pull first."
         fi
         
-        if [ "$ahead" -gt 0 ]; then
+        if [[ "$ahead" -gt 0 ]]; then
             warning "Local branch is $ahead commits ahead of remote."
         fi
     fi
@@ -87,23 +136,17 @@ check_remote_sync() {
 
 # Get workspace root directory
 get_workspace_root() {
-    local git_root=$(git rev-parse --show-toplevel)
-    local workspace_root=$(dirname "$git_root")
-    echo "$workspace_root"
+    dirname "$(git rev-parse --show-toplevel)"
 }
 
 # Validate branch name
 validate_branch_name() {
     local branch="$1"
     
-    if [[ -z "$branch" ]]; then
-        error "Branch name cannot be empty"
-    fi
+    [[ -z "$branch" ]] && error "Branch name cannot be empty"
     
     # Check for invalid characters
-    if ! git check-ref-format "refs/heads/$branch" 2>/dev/null; then
-        error "Invalid branch name: $branch"
-    fi
+    git check-ref-format "refs/heads/$branch" 2>/dev/null || error "Invalid branch name: $branch"
 }
 
 # Copy important untracked files to new worktree
@@ -112,7 +155,7 @@ copy_untracked_files() {
     local dest_dir="$2"
     
     # List of files to copy if they exist
-    local files_to_copy=(
+    local -a files_to_copy=(
         ".envrc"
         ".env"
         ".env.local"
@@ -121,7 +164,7 @@ copy_untracked_files() {
     )
     
     for file in "${files_to_copy[@]}"; do
-        if [ -f "$source_dir/$file" ]; then
+        if [[ -f "$source_dir/$file" ]]; then
             cp "$source_dir/$file" "$dest_dir/$file"
             info "Copied $file to new worktree"
         fi
@@ -141,54 +184,76 @@ add_worktree() {
     check_remote_sync
     
     # Determine worktree path
-    local workspace_root=$(get_workspace_root)
-    local repo_name=$(basename "$(git rev-parse --show-toplevel)")
+    local workspace_root
+    workspace_root=$(get_workspace_root)
+    local repo_name
+    repo_name=$(basename "$(git rev-parse --show-toplevel)")
     local worktree_name="${branch//\//-}"  # Replace / with - in branch name
     local worktree_path="$workspace_root/$worktree_name"
     
     # Check if worktree already exists
-    if [ -d "$worktree_path" ]; then
-        error "Directory already exists: $worktree_path"
-    fi
+    [[ -d "$worktree_path" ]] && error "Directory already exists: $worktree_path"
     
     # Check if branch already exists
-    if git show-ref --quiet "refs/heads/$branch"; then
-        error "Branch already exists: $branch"
-    fi
+    git show-ref --quiet "refs/heads/$branch" && error "Branch already exists: $branch"
     
     # Create the worktree
     info "Creating worktree at: $worktree_path"
     info "Creating branch: $branch"
     
-    if [ "$DRY_RUN" = true ]; then
+    if [[ "$DRY_RUN" == "true" ]]; then
         dry_run_info "git worktree add '$worktree_path' -b '$branch'"
     else
-        if ! git worktree add "$worktree_path" -b "$branch"; then
-            error "Failed to create worktree"
-        fi
+        git worktree add "$worktree_path" -b "$branch" || error "Failed to create worktree"
     fi
     
     # Copy untracked files
-    if [ "$DRY_RUN" = false ]; then
+    if [[ "$DRY_RUN" == "false" ]]; then
         copy_untracked_files "$(pwd)" "$worktree_path"
     else
         dry_run_info "Copy untracked files (.envrc, .env, .env.local, secrets.json, config.local.json)"
     fi
     
     # Run setup scripts if they exist
-    if [ "$DRY_RUN" = true ]; then
-        if [ -f "setup.sh" ]; then
-            dry_run_info "Run setup.sh in new worktree"
-        fi
+    if [[ "$DRY_RUN" == "true" ]]; then
+        [[ -f "setup.sh" ]] && dry_run_info "Run setup.sh in new worktree"
     else
-        if [ -f "$worktree_path/setup.sh" ]; then
+        if [[ -f "$worktree_path/setup.sh" ]]; then
             info "Running setup.sh in new worktree..."
             (cd "$worktree_path" && bash setup.sh)
         fi
     fi
     
     success "Worktree created successfully!"
-    info "To switch to the new worktree: cd $worktree_path"
+    
+    # Handle directory change and tool execution
+    if [[ "$RUN_BASH" == "true" || "$RUN_CLAUDE" == "true" || "$RUN_GEMINI" == "true" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            if [[ "$RUN_CLAUDE" == "true" ]]; then
+                dry_run_info "cd '$worktree_path' && exec claude --dangerously-skip-permissions"
+            elif [[ "$RUN_GEMINI" == "true" ]]; then
+                dry_run_info "cd '$worktree_path' && exec gemini --yolo"
+            else
+                dry_run_info "cd '$worktree_path' && exec $SHELL"
+            fi
+        else
+            # Change to the worktree directory and start appropriate tool or shell
+            cd "$worktree_path"
+            
+            if [[ "$RUN_CLAUDE" == "true" ]]; then
+                info "Starting Claude in $worktree_path..."
+                exec claude --dangerously-skip-permissions
+            elif [[ "$RUN_GEMINI" == "true" ]]; then
+                info "Starting Gemini in $worktree_path..."
+                exec gemini --yolo
+            else
+                info "Starting new shell in $worktree_path..."
+                exec "$SHELL"
+            fi
+        fi
+    else
+        info "To switch to the new worktree: cd $worktree_path"
+    fi
 }
 
 # Remove a worktree
@@ -197,20 +262,18 @@ remove_worktree() {
     validate_branch_name "$branch"
     
     # Find the worktree path
-    local worktree_info=$(git worktree list --porcelain | grep -B2 "branch refs/heads/$branch" || true)
+    local worktree_info
+    worktree_info=$(git worktree list --porcelain | grep -B2 "branch refs/heads/$branch" || true)
     
-    if [ -z "$worktree_info" ]; then
-        error "No worktree found for branch: $branch"
-    fi
+    [[ -z "$worktree_info" ]] && error "No worktree found for branch: $branch"
     
-    local worktree_path=$(echo "$worktree_info" | grep "^worktree" | cut -d' ' -f2)
+    local worktree_path
+    worktree_path=$(echo "$worktree_info" | grep "^worktree" | cut -d' ' -f2)
     
-    if [ -z "$worktree_path" ]; then
-        error "Could not determine worktree path for branch: $branch"
-    fi
+    [[ -z "$worktree_path" ]] && error "Could not determine worktree path for branch: $branch"
     
     # Check for uncommitted changes in the worktree
-    if [ -d "$worktree_path" ]; then
+    if [[ -d "$worktree_path" ]]; then
         pushd "$worktree_path" > /dev/null
         if ! check_uncommitted_changes; then
             popd > /dev/null
@@ -222,16 +285,14 @@ remove_worktree() {
     # Remove the worktree
     info "Removing worktree at: $worktree_path"
     
-    if [ "$DRY_RUN" = true ]; then
+    if [[ "$DRY_RUN" == "true" ]]; then
         dry_run_info "git worktree remove '$branch' --force"
     else
-        if ! git worktree remove "$branch" --force; then
-            error "Failed to remove worktree"
-        fi
+        git worktree remove "$branch" --force || error "Failed to remove worktree"
     fi
     
     # Ask if user wants to delete the branch
-    if [ "$DRY_RUN" = true ]; then
+    if [[ "$DRY_RUN" == "true" ]]; then
         dry_run_info "Prompt to delete branch '$branch'"
     else
         read -p "Do you want to delete the branch '$branch' as well? (y/N) " -n 1 -r
@@ -250,18 +311,75 @@ remove_worktree() {
 
 # Main command handling
 main() {
-    # Check for --dry-run flag
-    if [ "$1" = "--dry-run" ]; then
-        DRY_RUN=true
-        shift
+    # Parse command line arguments
+    local command=""
+    local branch=""
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --bash)
+                RUN_BASH=true
+                shift
+                ;;
+            --claude)
+                RUN_CLAUDE=true
+                shift
+                ;;
+            --gemini)
+                RUN_GEMINI=true
+                shift
+                ;;
+            -h|--help)
+                show_help
+                ;;
+            add|remove)
+                command="$1"
+                shift
+                if [[ $# -gt 0 ]]; then
+                    branch="$1"
+                    shift
+                fi
+                ;;
+            *)
+                if [[ -z "$command" ]]; then
+                    error "Unknown option or command: $1\nRun 'agent-worktree --help' for usage information"
+                elif [[ -z "$branch" ]]; then
+                    branch="$1"
+                    shift
+                else
+                    error "Unexpected argument: $1\nRun 'agent-worktree --help' for usage information"
+                fi
+                ;;
+        esac
+    done
+    
+    # Validate that we have a command and branch
+    if [[ -z "$command" ]]; then
+        error "No command specified\nRun 'agent-worktree --help' for usage information"
     fi
     
-    if [ $# -lt 2 ]; then
-        error "Usage: agent-worktree [--dry-run] <add|remove> <branch-name>"
+    if [[ -z "$branch" ]]; then
+        error "No branch name specified\nRun 'agent-worktree --help' for usage information"
     fi
     
-    local command="$1"
-    local branch="$2"
+    # Validate flag combinations
+    if [[ "$command" != "add" && ( "$RUN_BASH" == "true" || "$RUN_CLAUDE" == "true" || "$RUN_GEMINI" == "true" ) ]]; then
+        error "The --bash, --claude, and --gemini flags can only be used with the 'add' command"
+    fi
+    
+    # Check for mutually exclusive flags
+    local tool_count=0
+    [[ "$RUN_BASH" == "true" ]] && ((tool_count++))
+    [[ "$RUN_CLAUDE" == "true" ]] && ((tool_count++))
+    [[ "$RUN_GEMINI" == "true" ]] && ((tool_count++))
+    
+    if [[ $tool_count -gt 1 ]]; then
+        error "Only one of --bash, --claude, or --gemini can be specified at a time"
+    fi
     
     validate_git_repo
     
