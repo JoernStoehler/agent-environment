@@ -6,7 +6,9 @@ __pycache__/
 .Python
 
 # Environment files
+.env
 .env.local
+.envrc
 
 # IDE
 .vscode/
@@ -15,3 +17,32 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code configuration (contains OAuth tokens)
+.claude-config
+
+# Python virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# UV
+.uv/
+
+# Coverage reports
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# Pytest
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Logs
+*.log

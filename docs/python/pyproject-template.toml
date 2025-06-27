@@ -1,0 +1,102 @@
+# Python Project Configuration Template
+# This is a pruned template showing useful patterns
+
+[project]
+name = "your-package-name"
+version = "0.1.0"
+description = "Your project description"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Core dependencies only
+    # Add your essential packages here
+]
+
+[project.optional-dependencies]
+# Example of modular dependency groups
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "pytest-xdist",
+    "ruff",
+    "pyright",
+    "pre-commit",
+]
+# Add other groups as needed:
+# docs = ["mkdocs", "mkdocs-material"]
+# api = ["fastapi", "uvicorn"]
+# ml = ["scikit-learn", "pandas", "numpy"]
+
+[project.scripts]
+# Define CLI entry points
+# your-command = "your_package.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Ruff configuration - minimal rules for bug prevention
+[tool.ruff]
+# Rule categories:
+# E: pycodestyle errors
+# F: pyflakes (unused imports, undefined names, etc.)
+# I: isort (import sorting)
+select = ["E", "F", "I"]
+
+# Ignore specific rules if needed
+ignore = [
+    "E501",  # Line too long (let formatter handle)
+]
+
+# Python version target
+target-version = "py311"
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "build",
+    "dist",
+]
+
+[tool.ruff.isort]
+# Import sorting configuration
+known-first-party = ["your_package_name"]
+
+# Pyright configuration
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+reportMissingImports = true
+reportMissingTypeStubs = false
+
+# Pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+python_classes = "Test*"
+addopts = """
+    --strict-markers
+    --tb=short
+    --disable-warnings
+"""
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

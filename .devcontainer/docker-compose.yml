@@ -39,8 +39,6 @@ services:
   otlp:
     image: otel/opentelemetry-collector:latest
     restart: unless-stopped
-    profiles:
-      - with-telemetry
     ports:
       - "4317:4317"  # OTLP gRPC receiver
       - "4318:4318"  # OTLP HTTP receiver

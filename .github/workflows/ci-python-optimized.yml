@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+    
+    - name: Set up Python
+      run: uv python install ${{ env.PYTHON_VERSION }}
+    
+    - name: Install CI dependencies
+      # Install only minimal dependencies needed for CI
+      # This significantly reduces CI time by avoiding heavy optional deps
+      run: uv sync --frozen --extra ci
+    
+    - name: Run ruff
+      run: uv run ruff check .
+    
+    - name: Run pyright
+      run: uv run pyright .
+    
+    - name: Run tests with coverage
+      run: uv run pytest
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+        verbose: true
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
