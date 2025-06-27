@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 # agent-worktree: Git worktree management tool with automatic setup and validation
 #
@@ -338,6 +337,9 @@ remove_worktree() {
 
 # Main command handling
 main() {
+    # Apply strict error handling only when executing
+    set -euo pipefail
+    
     # Parse command line arguments
     local command=""
     local branch=""
