@@ -99,7 +99,6 @@ gh pr create                          # Create pull request
 - **Config**: `~/.claude`, `~/.gemini` (Docker volumes)
 
 ### Environment Variables
-- `.env` file auto-loads in local development
 - GitHub secrets used in Codespaces
 - `WORKSPACE_PATH` always points to current workspace
 

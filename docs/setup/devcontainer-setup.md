@@ -36,7 +36,6 @@ The setup consists of:
 - **Common utilities**: curl, wget, git, make
 
 ### Via Post-Create Scripts
-- Environment variable auto-loading from `.env`
 - Telemetry configuration for OTEL collector
 - Bash completions for agent-worktree tool
 - Python environment (if `pyproject.toml` exists)
@@ -62,11 +61,10 @@ OpenTelemetry collector that:
 
 Scripts in `.devcontainer/postCreateCommand/` run automatically after container creation:
 
-1. **01-bashrc-loads-env-file.sh** - Auto-loads `.env` file if present
-2. **10-fix-all-permissions.sh** - Fixes permissions for /workspaces and Docker volumes
-3. **20-setup-telemetry.sh** - Validates and configures OTEL telemetry
-4. **30-setup-bash-completions.sh** - Installs bash completions for tools
-5. **40-install-python-environment.sh** - Sets up Python environment if needed
+1. **10-fix-all-permissions.sh** - Fixes permissions for /workspaces and Docker volumes
+2. **20-setup-telemetry.sh** - Validates and configures OTEL telemetry
+3. **30-setup-bash-completions.sh** - Installs bash completions for tools
+4. **40-install-python-environment.sh** - Sets up Python environment if needed
 
 The scripts run in numeric order and are designed to be idempotent (safe to run multiple times).
 
